@@ -118,6 +118,20 @@ trait MetalsLanguageClient extends LanguageClient with TreeViewClient {
 
   override def notifyProgress(params: ProgressParams): Unit
 
+  /**
+   * The refresh endpoints below are re-abstracted on purpose. lsp4j declares
+   * them as `default` methods whose body is `throw new
+   * UnsupportedOperationException()`, so an implementor that forgets one
+   * inherits a method that throws *synchronously* instead of returning a
+   * failed future. Keeping them abstract turns such an omission into a
+   * compile error. See https://github.com/scalameta/metals/issues/8961.
+   */
+  override def refreshSemanticTokens(): CompletableFuture[Void]
+
+  override def refreshCodeLenses(): CompletableFuture[Void]
+
+  override def refreshInlayHints(): CompletableFuture[Void]
+
   def shutdown(): Unit = {}
 
 }

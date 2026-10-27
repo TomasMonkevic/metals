@@ -114,6 +114,14 @@ class DelegatingLanguageClient(var underlying: MetalsLanguageClient)
     underlying.refreshInlayHints()
   }
 
+  override def refreshSemanticTokens(): CompletableFuture[Void] = {
+    underlying.refreshSemanticTokens()
+  }
+
+  override def refreshCodeLenses(): CompletableFuture[Void] = {
+    underlying.refreshCodeLenses()
+  }
+
   override def configuration(
       configurationParams: ConfigurationParams
   ): CompletableFuture[ju.List[Object]] =

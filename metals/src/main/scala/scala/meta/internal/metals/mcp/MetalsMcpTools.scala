@@ -1323,6 +1323,31 @@ trait MetalsMcpTools extends Cancelable {
       .build()
 
   // Helper methods
+
+  /**
+   * Not every exception carries a message - `new UnsupportedOperationException()`
+   * for instance renders as a bare `null` - so fall back to the class name.
+   */
+  private def errorResult(
+      e: Throwable,
+      arguments: JMap[String, Object],
+  ): Mono[CallToolResult] = {
+    val message = Option(e.getMessage).getOrElse(e.toString)
+    scribe.warn(
+      s"Error while processing request: $message, arguments: ${arguments.toJson}, stacktrace:\n" +
+        e.getStackTrace.mkString("\n")
+    )
+    Mono.just(
+      CallToolResult
+        .builder()
+        .content(
+          createContent(s"Error: $message, arguments: ${arguments.toJson}")
+        )
+        .isError(true)
+        .build()
+    )
+  }
+
   protected def withErrorHandling(
       f: (McpAsyncServerExchange, JMap[String, Object]) => Mono[CallToolResult]
   ): BiFunction[
@@ -1332,40 +1357,9 @@ trait MetalsMcpTools extends Cancelable {
   ] = { (exchange, request) =>
     val arguments = request.arguments()
     try {
-      f(exchange, arguments).onErrorResume { e =>
-        scribe.warn(
-          s"Error while processing request: ${e.getMessage}, arguments: ${arguments.toJson}, stacktrace:" +
-            e.getStackTrace.mkString("\n")
-        )
-        Mono.just(
-          CallToolResult
-            .builder()
-            .content(
-              createContent(
-                s"Error: ${e.getMessage}, arguments: ${arguments.toJson}"
-              )
-            )
-            .isError(true)
-            .build()
-        )
-      }
+      f(exchange, arguments).onErrorResume(e => errorResult(e, arguments))
     } catch {
-      case NonFatal(e) =>
-        scribe.warn(
-          s"Error while processing request: ${e.getMessage}, arguments: ${arguments.toJson}, stacktrace:" +
-            e.getStackTrace.mkString("\n")
-        )
-        Mono.just(
-          CallToolResult
-            .builder()
-            .content(
-              createContent(
-                s"Error: ${e.getMessage}, arguments: ${arguments.toJson}"
-              )
-            )
-            .isError(true)
-            .build()
-        )
+      case NonFatal(e) => errorResult(e, arguments)
     }
   }
 

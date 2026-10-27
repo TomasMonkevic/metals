@@ -144,6 +144,7 @@ object TestGroups {
     "scala.meta.internal.metals.debug.tests.DebugProxyTeardownSuite",
     "tests.mcp.McpGlobSearchCapLspSuite",
     "scala.meta.internal.metals.mcp.tests.McpGlobSearchNormalizeSuite",
+    "tests.ConfiguredLanguageClientSuite",
   )
 
   val numberOfShards = 4

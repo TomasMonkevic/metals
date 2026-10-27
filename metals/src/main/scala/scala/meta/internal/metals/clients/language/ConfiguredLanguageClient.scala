@@ -9,6 +9,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import scala.concurrent.Promise
+import scala.util.Failure
+import scala.util.Success
+import scala.util.Try
 
 import scala.meta.internal.metals.ClientCommands
 import scala.meta.internal.metals.ClientConfiguration
@@ -191,9 +194,33 @@ final class ConfiguredLanguageClient(
     }
   }
 
+  /**
+   * Refreshing is best effort, so a client that fails to handle the request
+   * must never break the operation that triggered it.
+   *
+   * The `Try` is load bearing: the underlying client may throw
+   * *synchronously* rather than return a failed future, which is what lsp4j's
+   * `default` implementations do. See
+   * https://github.com/scalameta/metals/issues/8961.
+   */
+  private def refreshing(
+      what: String
+  )(refresh: => CompletableFuture[Void]): CompletableFuture[Void] =
+    Try(refresh) match {
+      case Success(future) =>
+        future.handle { (result, ex) =>
+          if (ex != null) scribe.warn(s"Error while refreshing $what", ex)
+          result
+        }
+      case Failure(ex) =>
+        scribe.warn(s"Error while refreshing $what", ex)
+        CompletableFuture.allOf()
+    }
+
   override def refreshModel(): CompletableFuture[Unit] = {
     if (clientConfig.codeLenseRefreshSupport())
-      underlying.refreshCodeLenses.thenApply(_ => ())
+      refreshing("code lenses")(underlying.refreshCodeLenses())
+        .thenApply(_ => ())
     else if (
       clientConfig.isExecuteClientCommandProvider() &&
       (clientConfig.isDebuggingProvider() || clientConfig.isRunProvider())
@@ -204,30 +231,18 @@ final class ConfiguredLanguageClient(
   }
 
   override def refreshSemanticTokens(): CompletableFuture[Void] = {
-    if (clientConfig.semanticTokensRefreshSupport()) {
-      underlying
-        .refreshSemanticTokens()
-        .handle { (msg, ex) =>
-          if (ex != null)
-            scribe.warn(s"Error while refreshing semantic tokens: $msg", ex)
-          msg
-        }
-    } else CompletableFuture.allOf()
+    if (clientConfig.semanticTokensRefreshSupport())
+      refreshing("semantic tokens")(underlying.refreshSemanticTokens())
+    else CompletableFuture.allOf()
   }
 
   override def refreshInlayHints(): CompletableFuture[Void] = {
     if (
       clientConfig.isInlayHintsEnabled() && clientConfig
         .isInlayHintsRefreshEnabled()
-    ) {
-      underlying
-        .refreshInlayHints()
-        .handle { (msg, ex) =>
-          if (ex != null)
-            scribe.warn(s"Error while refreshing inlayHints: $msg", ex)
-          msg
-        }
-    } else CompletableFuture.allOf()
+    )
+      refreshing("inlay hints")(underlying.refreshInlayHints())
+    else CompletableFuture.allOf()
   }
 
   override def metalsExecuteClientCommand(
